@@ -205,9 +205,9 @@ sub __file_exists {
     return (-f $queue) ? TRUE : FALSE;
 }
 
-# IPC::ShareLite store() error: Identifier removed at 가 발생하면 
-# semaphore 에서 삭제되지 않은 키가 존재하므로
-# ipcs -a 로 확인후 ipcrm 으로 삭제
+# If "IPC::ShareLite store() error: Identifier removed at" occurred, then
+# already undeleted semaphore key exists.
+# So check and remove the key with a command "ipcs -a" and "ipcrm"
 sub __load_module {
     my $self = shift if ref ($_[0]);
     my $suffix;
