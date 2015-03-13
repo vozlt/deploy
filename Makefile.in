@@ -1,0 +1,63 @@
+# @file:    Makefile.in
+# @brief:
+# @author:  YoungJoo.Kim <vozlt@vozlt.com>
+# @version:
+# @date:
+
+DESTDIR         =
+
+name            = deploy
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+libdir          = @libdir@
+bindir          = @bindir@
+sbindir         = @sbindir@
+sysconfdir      = @sysconfdir@/$(name)
+perl            = @perlpath@
+vendorlib       = @vendorlib@
+
+MAKE            = @MAKE@
+RM              = @RM@ -f
+INSTALL         = @INSTALL@
+
+LIB_DIR = src/lib/Deploy
+LIBS = $(wildcard $(LIB_DIR:=/*.pm))
+
+CNF_DIR = conf
+CNFS = $(wildcard $(CNF_DIR:=/*.ini))
+
+BIN_TARGETS		= $(name)-agent $(name)-proxy $(name)-client
+LIB_TARGETS		= $(notdir $(LIBS))
+
+ifdef vendorlib
+	perl_libdir = $(vendorlib)
+	perl_lib_path =
+else
+	perl_libdir = $(libdir)
+	perl_lib_path = use lib "$(perl_libdir)";
+endif
+
+all:
+	$(INSTALL) -d -m755 .bin
+
+	$(foreach val,\
+		$(BIN_TARGETS),\
+		$(perl) -p -e 's!\@perl_bin_path\@!$(perl)!g; s!\@perl_lib_path\@!$(perl_lib_path)!g;' \
+		src/bin/$(val).in > .bin/$(val);)
+
+install:
+	$(INSTALL) -d -m755 $(DESTDIR)$(perl_libdir)/Deploy
+	$(INSTALL) -d -m755 $(DESTDIR)$(sbindir)
+	$(INSTALL) -d -m755 $(DESTDIR)$(sysconfdir)
+	$(INSTALL) -m644 $(LIBS) $(DESTDIR)$(perl_libdir)/Deploy
+	$(INSTALL) -m755 $(wildcard .bin/*) $(DESTDIR)$(sbindir)
+	$(INSTALL) -m600 $(CNFS) $(DESTDIR)/$(sysconfdir)
+
+uninstall:
+	cd $(DESTDIR)$(perl_libdir)/Deploy; \
+	$(RM) $(LIB_TARGETS)
+	cd $(DESTDIR)$(sbindir); \
+	$(RM) $(BIN_TARGETS)
+
+clean:
+	$(RM) -r .bin

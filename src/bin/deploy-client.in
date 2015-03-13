@@ -1,0 +1,225 @@
+#! @perl_bin_path@
+
+# @file:    deploy-client.in
+# @brief:
+# @author:  YoungJoo.Kim <vozlt@vozlt.com>
+# @version:
+# @date:
+
+package DeployClient;
+
+@perl_lib_path@
+
+use strict;
+use Getopt::Long;
+use JSON;
+use Deploy::Boolean qw(:Boolean);
+use Deploy::Client;
+use Deploy::File;
+use Deploy::Carp;
+use Data::Dumper;
+
+our @ISA = qw(Deploy::Carp);
+
+sub new {
+    my($class, %cnf) = @_;
+
+    my $debug = delete $cnf{debug};
+    my $warn = delete $cnf{warn};
+    my $order = delete $cnf{order};
+    my $hosts = delete $cnf{hosts};
+    my $port = delete $cnf{port};
+    my $args = delete $cnf{args};
+    my $options = delete $cnf{options};
+    my $key_cipher = delete $cnf{key_cipher};
+    my $api_key = delete $cnf{api_key};
+    my $ipc_path = delete $cnf{ipc_path};
+    my $worker_method = delete $cnf{worker_method};
+    my $thread_timeout = delete $cnf{thread_timeout};
+    my $socket_timeout = delete $cnf{socket_timeout};
+    my $socket_accept_filter = delete $cnf{socket_accept_filter};
+    my $ssl = delete $cnf{ssl};
+    my $ssl_public_key = delete $cnf{ssl_public_key};
+    my $lang = delete $cnf{lang};
+    my $verbose = delete $cnf{verbose};
+
+    $debug = 0 unless defined $debug;
+    $warn = 0 unless defined $warn;
+    $port = 3441 unless defined $port;
+    $ipc_path = '/tmp/.deploy_client_ipc' unless defined $ipc_path;
+    $worker_method = 'fork' unless defined $worker_method;
+    $thread_timeout = 5 unless defined $thread_timeout;
+    $socket_timeout = 5 unless defined $socket_timeout;
+
+    my $self =
+    bless {
+        debug                   => $debug,
+        warn                    => $warn,
+
+        hosts                   => $hosts,
+        port                    => $port,
+        args                    => $args,
+        options                 => $options,
+        key_cipher              => $key_cipher,
+        api_key                 => $api_key,
+        ssl_public_key          => $ssl_public_key,
+
+        ipc_path                => $ipc_path,
+        worker_method           => $worker_method,
+        thread_timeout          => $thread_timeout,
+        socket_timeout          => $socket_timeout,
+        socket_accept_filter    => $socket_accept_filter,
+
+        allow_orders            => ['status', 'rlist', 'rsync', 'rkill', 'exec'],
+
+        verbose                 => $verbose,
+
+        process_id              => $$
+    }, $class;
+
+    return bless $self;
+}
+
+sub usage {
+    my $self = shift if ref ($_[0]);
+    print "Usage: deploy-client [OPTIONS] [COMMANDS]\n";
+    print "\nCommands:\n";
+    print "           --order=[status|rlist|rsync|rkill|exec]    : remote command\n";
+    print "\nOptions:\n";
+    print "           --hosts=[hosts]                            : remote host\n";
+    print "           --port=[port]                              : remote port\n";
+    print "           --args=[(groups|hosts):string]             : order hosts (proxy)\n";
+    print "           --options=[options]                        : order options\n";
+    print "           --key-cipher=[string]                      : set password for authentication (agent)\n";
+    print "           --api-key=[string]                         : set api key for authentication (proxy)\n";
+    print "           --ssl-public-key=[path]                    : set ssl public key for encryption (proxy|agent)\n";
+    print "           --ipc-path=[memory|path]                   : set queue path for IPC (default: file)\n";
+    print "           --worker-method=[fork|thread]              : set multi-processing method (default: fork)\n";
+    print "           --thread-timeout=[number]                  : limits the client's maximum execution time\n";
+    print "           --socket-timeout=[number]                  : limits the client's maximum socket wait time\n";
+    print "           --debug                                    : running debug mode\n";
+    print "           --verbose                                  : verbose print mode\n";
+    exit(1);
+}
+
+sub __getopts() {
+    my $self = shift if ref ($_[0]);
+    GetOptions(
+        'order=s' => \$self->{order},
+        'hosts=s' => \$self->{hosts},
+        'port=i' => \$self->{port},
+        'args=s' => \$self->{args},
+        'options=s' => \$self->{options},
+        'key-cipher=s' => \$self->{key_cipher},
+        'api-key=s' => \$self->{api_key},
+        'ssl-public-key=s' => \$self->{ssl_public_key},
+        'ipc-path=s' => \$self->{ipc_path},
+        'worker-method=s' => \$self->{worker_method},
+        'thread-timeout=i' => \$self->{thread_timeout},
+        'socket-timeout=i' => \$self->{socket_timeout},
+        'debug' => \$self->{debug},
+        'verbose' => \$self->{verbose},
+    );
+    return $self;
+}
+
+sub exec {
+    my $self = shift if ref ($_[0]);
+    my @hosts = split(/[,]/, $self->{hosts});
+    my $ssl = defined($self->{ssl_public_key}) ? 1 : 0;
+    my $ssl_public_key;
+
+    if (defined $self->{ssl_public_key}) {
+        $ssl_public_key = Deploy::File->new()->fileRead($self->{ssl_public_key});
+        if (!$ssl_public_key) {
+            print "error: ssl_public_key[$self->{ssl_public_key}] is false: $!\n";
+            exit(FAILURE);
+        }
+    }
+
+    my $client = Deploy::Client->new(
+        debug => $self->{debug},
+        warn => $self->{warn},
+        port => $self->{port},
+        ipc_path => $self->{ipc_path},
+        worker_method => $self->{worker_method},
+        thread_timeout => $self->{thread_timeout},
+        socket_timeout => $self->{socket_timeout},
+        socket_accept_filter => $self->{socket_accept_filter},
+        ssl => $ssl,
+        ssl_public_key => $ssl_public_key,
+        key_cipher => $self->{key_cipher},
+        orders => {
+            api_key => $self->{api_key},
+            target => 'agent',
+            order => $self->{order},
+            options => $self->{options},
+            args => $self->{args},
+            hosts => \@hosts,
+        }
+    );
+
+    return $client->exec();
+}
+
+sub __client_exec {
+    my $self = shift if ref ($_[0]);
+    my $results = $self->exec();
+
+    if ($self->{verbose}) {
+        print "# [VERBOSE]: Start\n\$results => " . Dumper($results) . "\n# [VERBOSE]: End\n";
+    }
+
+    my $json = JSON->new->utf8(1)->pretty(1);
+    my $jref = {};
+
+    for my $res (@{$results}) {
+        my $host = $res->{host};
+        my $server_status = $res->{server_status};
+        my $content = $res->{CONTENT};
+        my $order = $self->{order};
+        my $return = ($res->{HTTP_CODE} == 200) ? 1 :0;
+
+        my $json_content = ($return) ? $json->decode($content) : FALSE;
+
+        $jref->{$host}{$order}{return} = $return;
+        $jref->{$host}{$order}{serverStatus} = $server_status;
+        $jref->{$host}{$order}{content} = ($json_content) ? $json_content : $content;
+        $jref->{$host}{$order}{returnCode} = $res->{HTTP_CODE};
+        $jref->{$host}{$order}{returnString} = $res->{HTTP_STRING};
+
+    }
+    my $json_string = $json->encode($jref);
+
+    return $json_string;
+}
+
+sub main {
+    my $self = shift if ref ($_[0]);
+    my $json_string;
+
+    $self->usage() if ( $#ARGV < 0);
+    $self->__getopts();
+    $self->usage() if (!grep(/^$self->{order}$/, @{$self->{allow_orders}}));
+
+    my $order_handler = '__client_exec';
+    if (!$self->can($order_handler)) {
+        print "error: $order_handler() not found!\n";
+        exit(FALSE);
+    }
+    eval {
+        $json_string = $self->$order_handler();
+    };
+    if ($@) {
+        print "error: $@\n";
+        exit(FALSE);
+    }
+    print $json_string;
+}
+
+1;
+
+package main;
+DeployClient->new()->main();
+
+# vi:set ft=perl ts=4 sw=4 et fdm=marker:

@@ -1,0 +1,61 @@
+#! /bin/bash
+#
+# deploy-agent         Start/Stop the deploy agent daemon.
+#
+# chkconfig: - 85 15
+# description: deploy agent daemon.
+# processname: deploy-agent
+# config: /etc/deploy/deploy_agent.ini
+
+# Source function library.
+. /etc/init.d/functions
+
+exec="/usr/sbin/deploy-agent"
+prog=$(basename $exec)
+
+[ -e /etc/sysconfig/$prog ] && . /etc/sysconfig/$prog
+
+lockfile=/var/lock/subsys/$prog
+
+RETVAL=0
+
+start() {
+	echo -n $"Starting $prog: "
+	daemon $exec
+	RETVAL=$?
+	echo
+	[ $RETVAL -eq 0 ] && touch $lockfile
+	return $RETVAL
+}
+
+stop() {
+	echo -n $"Stopping $prog: "
+	killproc $prog
+	RETVAL=$?
+	echo
+	[ $RETVAL -eq 0 ] && rm -f $lockfile
+	return $RETVAL
+}
+
+restart() {
+  	stop
+	start
+}
+
+reload() {
+    restart
+}
+
+status() {
+	status $prog
+}
+
+case "$1" in
+	start|stop|restart|status)
+		$1
+	;;    
+	*)
+		echo $"Usage: $0 {start|stop|status|restart}"
+		RETVAL=2
+esac
+exit $RETVAL

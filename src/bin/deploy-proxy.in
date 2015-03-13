@@ -1,0 +1,241 @@
+#! @perl_bin_path@
+
+# @file:    deploy-proxy.in
+# @brief:
+# @author:  YoungJoo.Kim <vozlt@vozlt.com>
+# @version:
+# @date:
+
+package DeployProxy;
+
+@perl_lib_path@
+
+use strict;
+use Getopt::Long;
+use warnings "all";
+
+use Deploy::Boolean qw(:Boolean);
+use Deploy::Proxy;
+use Deploy::Carp;
+
+use Socket;
+use MIME::Base64;
+use Data::Dumper;
+
+our @ISA = qw(Deploy::Carp);
+
+sub new {
+    my($class, %cnf) = @_;
+
+    my $debug = delete $cnf{debug};
+    my $path = delete $cnf{path};
+    my $process_name = delete $cnf{process_name};
+    my $user = delete $cnf{user};
+    my $group = delete $cnf{group};
+    my $addr = delete $cnf{addr};
+    my $port = delete $cnf{port};
+    my $backlog = delete $cnf{backlog};
+    my $max_prefork = delete $cnf{max_prefork};
+    my $max_requests_per_child = delete $cnf{max_requests_per_child};
+    my $max_process_timeout = delete $cnf{max_process_timeout};
+    my $socket_timeout = delete $cnf{socket_timeout};
+    my $socket_accept_filter = delete $cnf{socket_accept_filter};
+
+    # Client (user -> proxy -> client -> agent)
+    my $client_worker_method = delete $cnf{client_worker_method};
+    my $client_ipc_path = delete $cnf{client_ipc_path};
+    my $client_port = delete $cnf{port};
+    my $client_thread_timeout = delete $cnf{client_thread_timeout};
+    my $client_socket_timeout = delete $cnf{client_socket_timeout};
+    my $client_key_cipher = delete $cnf{client_key_cipher};
+    my $client_ssl = delete $cnf{client_ssl};
+    my $client_ssl_public_key = delete $cnf{client_ssl_public_key};
+
+    my $log_write = delete $cnf{log_write};
+    my $log_error_level = delete $cnf{log_error_level};
+    my $log_error_path = delete $cnf{log_error_path};
+    my $log_access_path = delete $cnf{log_access_path};
+    my $key_cipher = delete $cnf{key_cipher};
+    my $ssl = delete $cnf{ssl};
+    my $ssl_public_key = delete $cnf{ssl_public_key};
+    my $ssl_private_key = delete $cnf{ssl_private_key};
+    $path = '/etc/deploy/deploy_proxy.ini' unless defined $path;
+
+
+
+    my $self =
+    bless {
+        debug                   => $debug,
+        path                    => $path,
+
+        user                    => $user,
+        group                   => $group,
+        addr                    => $addr,
+        port                    => $port,
+        backlog                 => $backlog,
+
+        max_prefork             => $max_prefork,
+        max_requests_per_child  => $max_requests_per_child,
+        max_process_timeout     => $max_process_timeout,
+
+        socket_timeout          => $socket_timeout,
+        socket_accept_filter    => $socket_accept_filter,
+        
+        log_write               => $log_write,
+        log_error_level         => $log_error_level,
+        log_error_path          => $log_error_path,
+        log_access_path         => $log_access_path,
+        key_cipher              => $key_cipher,
+        ssl                     => $ssl,
+        ssl_public_key          => $ssl_public_key,
+        ssl_private_key         => $ssl_private_key,
+
+        client_worker_method    => $client_worker_method,
+        client_ipc_path         => $client_ipc_path,
+        client_port             => $client_port,
+        client_thread_timeout   => $client_thread_timeout,
+        client_socket_timeout   => $client_socket_timeout,
+        client_key_cipher       => $client_key_cipher,
+        client_ssl              => $client_ssl,
+        client_ssl_public_key   => $client_ssl_public_key,
+    
+        allow_orders            => ['status', 'rlist', 'rsync', 'rkill', 'exec'],
+
+        process_name            => $process_name,
+        process_id              => $$
+
+    }, $class;
+
+    return bless $self;
+}
+
+sub usage {
+    my $self = shift if ref ($_[0]);
+    print "Usage: deploy-proxy [OPTIONS]\n";
+    print "\nOptions:\n";
+    print "           --path=[path]                          : set server configuration file (default: /etc/deploy/deploy_proxy.ini)\n";
+    print "           --user=[user]                        : set server running user (defaut: root)\n";
+    print "           --group=[group]                      : set server running group (defaut: root)\n";
+    print "           --addr=[addr]                          : set server listen address (defaut: 0.0.0.0)\n";
+    print "           --port=[port]                          : set server listen port (default: 3440)\n";
+    print "           --backlog=[number]                     : set server listen backlog (default: SOMAXCONN)\n";
+    print "           --max-prefork=[number]                 : limits the maximum worker process number\n";
+    print "           --max-requests-per-child=[number]      : limits the maximum requests of child\n";
+    print "           --max-process-timeout=[number]         : limits the maximum execution time\n";
+    print "           --socket-timeout=[number]              : limits the maximum socket wait time\n";
+    print "           --socket-accept-filter=[on|off]        : optimizations for a protocol's listener sockets\n";
+    print "           --log-write=[on|off]                   : set logging\n";
+    print "           --log-error-level=[number]             : set logging level (0-7)\n";
+    print "           --log-error-path=[path]                : set error log path\n";
+    print "           --log-access-path=[path]               : set access log path\n";
+    print "           --key-cipher=[string]                  : set password for authentication\n";
+    print "           --ssl-private-key=[path]               : set ssl private key for encryption between client and proxy\n";
+    
+    print "           --client-worker-method=[fork|thread]   : set multi-processing method (default: fork)\n";
+    print "           --client-ipc-path=[memory|path]        : set queue path for IPC (default: file)\n";
+    print "           --client-port=[number]                 : set the port to connect to agent (default: 3440)\n";
+    print "           --client-thread-timeout=[number]       : limits the client's maximum execution time\n";
+    print "           --client-socket-timeout=[number]       : limits the client's maximum socket wait time\n";
+    print "           --client-key-cipher=[string]           : set password for agent's authentication\n";
+    print "           --client-ssl-public-key=[path]         : set ssl public key for encryption between proxy and agent\n";
+
+    print "           --debug                                : running debug mode\n";
+    print "           --help                                 : this help\n";
+    exit(1);
+}
+
+sub __getopts() {
+    my $self = shift if ref ($_[0]);
+    GetOptions(
+        'path=s' => \$self->{path},
+        'user=s' => \$self->{user},
+        'group=s' => \$self->{group},
+        'addr=s' => \$self->{addr},
+        'port=i' => \$self->{port},
+        'backlog=i' => \$self->{backlog},
+        'max-prefork=i' => \$self->{max_prefork},
+        'max-requests-per-child=i' => \$self->{max_requests_per_child},
+        'max-process-timeout=i' => \$self->{max_process_timeout},
+        'socket-timeout=i' => \$self->{socket_timeout},
+        'socket-accept-filter=s' => \$self->{socket_accept_filter},
+        'log-write=s' => \$self->{log_write},
+        'log-error-level=s' => \$self->{log_error_level},
+        'log-error-path=s' => \$self->{log_error_path},
+        'log-access-path=s' => \$self->{log_accss_path},
+        'key-cipher=s' => \$self->{key_cipher},
+        'ssl-private-key=s' => \$self->{ssl_private_key},
+        
+        'client-worker-method=s' => \$self->{client_worker_method},
+        'client-ipc-path=s' => \$self->{client_ipc_path},
+        'client-port=i' => \$self->{client_port},
+        'client-thread-timeout=i' => \$self->{client_thread_timeout},
+        'client-socket-timeout=i' => \$self->{client_socket_timeout},
+        'client-key-cipher=s' => \$self->{client_key_cipher},
+        'client-ssl-public-key=s' => \$self->{client_ssl_public_key},
+
+        'debug' => \$self->{debug},
+        'help' => \$self->{help},
+    );
+    return $self;
+}
+
+sub __agent_exec {
+    my $self = shift if ref ($_[0]);
+    Deploy::Proxy->new(
+        debug => $self->{debug},
+        path => $self->{path},
+        user => $self->{user},
+        group => $self->{group},
+        addr => $self->{addr},
+        port => $self->{port},
+        backlog => $self->{backlog},
+        max_prefork => $self->{max_prefork},
+        max_requests_per_child => $self->{max_requests_per_child},
+        max_process_timeout => $self->{max_process_timeout},
+        socket_timeout => $self->{socket_timeout},
+        socket_accept_filter => $self->{socket_accept_filter},
+        log_write => $self->{log_write},
+        log_error_level => $self->{log_error_level},
+        log_error_path => $self->{log_error_path},
+        log_access_path => $self->{log_accss_path},
+        key_cipher => $self->{key_cipher},
+        ssl_private_key => $self->{ssl_private_key},
+
+        client_worker_method => $self->{client_worker_method},
+        client_ipc_path => $self->{client_ipc_path},
+        client_port => $self->{client_port},
+        client_thread_timeout => $self->{client_thread_timeout},
+        client_socket_timeout => $self->{client_socket_timeout},
+        client_key_cipher => $self->{client_key_cipher},
+        client_ssl_public_key => $self->{client_ssl_public_key},
+    )->main();
+
+    return $self;
+}
+
+sub main {
+    my $self = shift if ref ($_[0]);
+
+    $self->__getopts();
+    $self->{help} && $self->usage();
+
+    my $order_handler = '__agent_exec';
+    if (!$self->can($order_handler)) {
+        print "error: $order_handler() not found!\n";
+        exit(FALSE);
+    }
+    eval {
+        $self->$order_handler();
+    };
+    if ($@) {
+        print "error: $@\n";
+        exit(FALSE);
+    }
+}
+
+1;
+
+package main;
+DeployProxy->new()->main();
+
+# vi:set ft=perl ts=4 sw=4 et fdm=marker:
