@@ -114,8 +114,8 @@ sub usage {
     print "Usage: deploy-proxy [OPTIONS]\n";
     print "\nOptions:\n";
     print "           --path=[path]                          : set server configuration file (default: /etc/deploy/deploy_proxy.ini)\n";
-    print "           --user=[user]                        : set server running user (defaut: root)\n";
-    print "           --group=[group]                      : set server running group (defaut: root)\n";
+    print "           --user=[user]                          : set server running user (defaut: root)\n";
+    print "           --group=[group]                        : set server running group (defaut: root)\n";
     print "           --addr=[addr]                          : set server listen address (defaut: 0.0.0.0)\n";
     print "           --port=[port]                          : set server listen port (default: 3440)\n";
     print "           --backlog=[number]                     : set server listen backlog (default: SOMAXCONN)\n";
