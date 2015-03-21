@@ -121,21 +121,20 @@ Earlier versions is not tested.
 ## Installation
 
 1. Clone the git repository.
-
-```
-shell> git clone git://github.com/vozlt/deploy.git
-```
+ ```
+ shell> git clone git://github.com/vozlt/deploy.git
+ ```
 
 2. Build the deploy.
-```
-shell> ./configure
-shell> make
-```
+ ```
+ shell> ./configure
+ shell> make
+ ```
 
 3. Install the deploy.
-```
-shell> make install
-```
+ ```
+ shell> make install
+ ```
 
 ## Running
 
