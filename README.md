@@ -482,4 +482,4 @@ Results
 ```
 
 ## Author
-YoungJoo.Kim(김영주) [<vozlt@vozlt.com>]
+YoungJoo.Kim(김영주) [<vozltx@gmail.com>]
